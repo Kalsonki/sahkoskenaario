@@ -48,11 +48,33 @@ def _hydro_marginal(water_level: str, month: int) -> float:
     mult = {"märkä": 0.4, "normaali": 1.0, "kuiva": 1.8}.get(water_level, 1.0)
     return round(base * seasonal * mult, 2)
 
-def _chp_marginal(gas_price_mwh: float, co2_price_t: float) -> float:
-    return round(gas_price_mwh * 0.45 + co2_price_t * 0.35, 2)
+def chp_marginal(gas_price_mwh: float, co2_price_t: float) -> float:
+    """
+    CHP-laitoksen marginaalikustannus €/MWh sähköä.
+    Hyötysuhde ~0.85 (yhdistetty sähkö+lämpö), CO₂ ~0.20 t/MWh kaasua.
+    Kaava: (kaasuhinta + CO₂-kerroin × CO₂-hinta) / hyötysuhde
+    """
+    eta = 0.85                          # CHP-hyötysuhde (sähkö + lämpö)
+    co2_per_mwh_gas = 0.20             # t CO₂ per MWh maakaasua
+    fuel_cost = gas_price_mwh + co2_per_mwh_gas * co2_price_t
+    return round(fuel_cost / eta, 2)
 
-def _gas_marginal(gas_price_mwh: float, co2_price_t: float) -> float:
-    return round(gas_price_mwh * 0.55 + co2_price_t * 0.45, 2)
+# Sisäinen alias (yhteensopivuus)
+_chp_marginal = chp_marginal
+
+def gas_marginal(gas_price_mwh: float, co2_price_t: float) -> float:
+    """
+    Kaasuturbiinin marginaalikustannus €/MWh sähköä.
+    Hyötysuhde ~0.55 (CCGT), CO₂ ~0.20 t/MWh kaasua.
+    Kaava: (kaasuhinta + CO₂-kerroin × CO₂-hinta) / hyötysuhde
+    """
+    eta = 0.55                          # CCGT-hyötysuhde
+    co2_per_mwh_gas = 0.20             # t CO₂ per MWh maakaasua
+    fuel_cost = gas_price_mwh + co2_per_mwh_gas * co2_price_t
+    return round(fuel_cost / eta, 2)
+
+# Sisäinen alias (yhteensopivuus)
+_gas_marginal = gas_marginal
 
 @dataclass
 class MeritOrderSlice:

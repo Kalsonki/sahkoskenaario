@@ -13,7 +13,19 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from model.merit_order import chp_marginal, gas_marginal
+
 logger = logging.getLogger(__name__)
+
+# Merit order -referenssihinnat (kalibrointiparametrit gas=40, CO₂=70)
+_MO_REF_GAS  = 40.0
+_MO_REF_CO2  = 70.0
+_MO_BLENDED_REF = (
+    0.60 * chp_marginal(_MO_REF_GAS, _MO_REF_CO2)   # CHP ~60% kaasusähköstä
+    + 0.40 * gas_marginal(_MO_REF_GAS, _MO_REF_CO2)  # CCGT ~40%
+)  # ≈ 0.60*63.5 + 0.40*98.2 ≈ 77.4 €/MWh
+# Kaasusähkön osuus Suomen hintasignaalista (~35% tunneista)
+_GAS_MARKET_SHARE = 0.35
 
 # ── Vakiot ───────────────────────────────────────────────────────────────────
 
@@ -177,18 +189,21 @@ def compute_market_adjustments(params: ScenarioParams, year: int) -> float:
     _, nse_adj = NUCLEAR_SE_OPTIONS.get(params.nuclear_se, ("", 0.0))
     factor *= (1.0 + nse_adj)
 
-    # 5. Kaasun hinta (referenssi 40 €/MWh, joustavuus 0.30)
-    gas_pct = (params.gas_price_mwh - 40.0) / 40.0
-    factor *= (1.0 + 0.30 * gas_pct)
+    # 5+6. Kaasun ja CO₂:n yhteisvaikutus merit order -mallin kautta
+    # Painotettu rajakustannus: CHP ~60% + CCGT ~40% kaasusähköstä
+    blended_cur = (
+        0.60 * chp_marginal(params.gas_price_mwh, params.co2_price_t)
+        + 0.40 * gas_marginal(params.gas_price_mwh, params.co2_price_t)
+    )
+    # Suhteellinen muutos referenssipisteestä × kaasusähkön markkinaosuus
+    factor *= (1.0 + (blended_cur / _MO_BLENDED_REF - 1.0) * _GAS_MARKET_SHARE)
 
-    # 6. CO2-hinta (referenssi 70 €/t, joustavuus 0.20)
-    co2_pct = (params.co2_price_t - 70.0) / 70.0
-    factor *= (1.0 + 0.20 * co2_pct)
-
-    # 7. Kulutuskasvu: sähköistyminen + sähköautot (joustavuus 0.30)
+    # 7. Kulutuskasvu: sähköistyminen + sähköautot (joustavuus 0.60)
+    # Empiirinen peruste: Aalto 2023 tutkimus, kysyntäjousto -0.16 → supply-kerroin ~1.5
+    # Käytetään 0.60 (konservatiivinen pitkän aikavälin estimaatti, markkinat mukautuvat)
     total_growth_twh = params.electrification_twh + params.ev_twh
     consumption_pct = total_growth_twh * (years / 10.0) / FI_BASE_CONSUMPTION_TWH
-    factor *= (1.0 + 0.30 * consumption_pct)
+    factor *= (1.0 + 0.60 * consumption_pct)
 
     # 8. Datakeskukset (joustavuus 0.30)
     dc_twh = params.datacenter_base_twh * ((1 + params.datacenter_growth_pct / 100) ** years)
