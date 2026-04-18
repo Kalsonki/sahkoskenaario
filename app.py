@@ -1409,7 +1409,9 @@ with tabs[tab_offset + 3]:
             1:1.35,2:1.30,3:1.10,4:0.95,5:0.85,6:0.80,
             7:0.82,8:0.88,9:0.95,10:1.05,11:1.22,12:1.38
         }
-        avg_demand_mo = FI_BASE_CONSUMPTION_TWH * 1e6 / 8760
+        dc_twh_2030 = datacenter_base * ((1 + datacenter_growth / 100) ** 5)
+        total_consumption_2030 = FI_BASE_CONSUMPTION_TWH + (electrification_twh + ev_twh) * 0.5 + max(dc_twh_2030 - datacenter_base, 0)
+        avg_demand_mo = total_consumption_2030 * 1e6 / 8760
 
         mo_monthly_records = []
         for mo_m in range(1, 13):
@@ -1503,6 +1505,58 @@ with tabs[tab_offset + 3]:
 
     except Exception as e:
         st.error(f"Kuukausittainen merit order epäonnistui: {e}")
+
+    st.divider()
+
+    # ── Kulutuskäyrä 2025–2035 ────────────────────────────────────────────────
+    st.markdown("### Sähkönkulutuksen kehitys 2025–2035")
+    st.caption("Kulutusennuste perustuu sivupalkin parametreihin.")
+
+    years_range = list(range(2025, 2036))
+    base = FI_BASE_CONSUMPTION_TWH
+    elec_growth = electrification_twh + ev_twh
+
+    consumption_base  = [base] * len(years_range)
+    consumption_elec  = [base + elec_growth * (y - 2025) / 10 for y in years_range]
+    consumption_total = [
+        base
+        + elec_growth * (y - 2025) / 10
+        + max(datacenter_base * ((1 + datacenter_growth / 100) ** (y - 2025)) - datacenter_base, 0)
+        for y in years_range
+    ]
+
+    fig_cons = go.Figure()
+    fig_cons.add_trace(go.Scatter(
+        x=years_range, y=consumption_base,
+        name="Peruskulutus (ei kasvua)",
+        line=dict(color="#9E9E9E", width=1, dash="dot"),
+        hovertemplate="%{x}: %{y:.1f} TWh<extra>Peruskulutus</extra>",
+    ))
+    fig_cons.add_trace(go.Scatter(
+        x=years_range, y=consumption_elec,
+        name="+ Sähköistyminen & sähköautot",
+        line=dict(color="#1976D2", width=2),
+        hovertemplate="%{x}: %{y:.1f} TWh<extra>Sähköistyminen</extra>",
+    ))
+    fig_cons.add_trace(go.Scatter(
+        x=years_range, y=consumption_total,
+        name="+ Datakeskukset (kokonaisennuste)",
+        line=dict(color="#E53935", width=2),
+        fill="tonexty",
+        fillcolor="rgba(229,57,53,0.10)",
+        hovertemplate="%{x}: %{y:.1f} TWh<extra>Kokonaisennuste</extra>",
+    ))
+    fig_cons.update_layout(
+        xaxis_title="Vuosi",
+        yaxis_title="Kulutus (TWh/vuosi)",
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        height=360,
+        margin=dict(l=60, r=20, t=40, b=60),
+        yaxis=dict(gridcolor="#E0E0E0"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
+    st.plotly_chart(fig_cons, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

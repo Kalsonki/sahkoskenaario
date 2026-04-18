@@ -224,20 +224,22 @@ def load_fundamental_data(filepath: str | Path) -> tuple[pd.DataFrame, dict[str,
 
 # ── Synteettinen historiallinen data ─────────────────────────────────────────
 
-def generate_synthetic_prices(start_year: int = 2015, end_year: int = 2024) -> pd.DataFrame:
+def generate_synthetic_prices(start_year: int = 2015, end_year: int = 2025) -> pd.DataFrame:
     """
-    Generoi realistisen synteettisen kuukausittaisen hintadatan vuosille 2015–2024.
+    Generoi realistisen synteettisen kuukausittaisen hintadatan vuosille 2015–2025.
 
     Mallintaa oikeat suomalaiset hintatasot:
     - 2015–2020: 30–45 €/MWh, normaali kausivaihtelu
     - 2021–2022: energiakriisi, piikkihinnat
     - 2023–2024: normalisoituminen OL3:n myötä
+    - 2025: matala hintataso, runsas vesivoima + OL3
     """
     rng = np.random.default_rng(42)
 
     annual_base = {
         2015: 31.0, 2016: 33.0, 2017: 37.0, 2018: 44.0, 2019: 40.0,
         2020: 28.0, 2021: 72.0, 2022: 140.0, 2023: 55.0, 2024: 45.0,
+        2025: 38.0,  # matala hintataso: OL3 täydessä tuotannossa, runsas vesivoima
     }
     month_factors = {
         1: 1.35, 2: 1.30, 3: 1.10, 4: 0.95, 5: 0.85, 6: 0.80,
@@ -248,15 +250,35 @@ def generate_synthetic_prices(start_year: int = 2015, end_year: int = 2024) -> p
         (2022, 8): 3.5, (2022, 9): 4.0, (2022, 10): 3.0,
         (2022, 11): 2.5, (2022, 12): 2.2,
     }
+    # 2025 kuukausikohtaiset toteutuneet hinnat (Nord Pool FI tukkuhinta €/MWh)
+    # Lähde: Energia.fi vuosikatsaus 2025, Yle, Vaasan Sähkö markkinakatsaus
+    # Vuosikeskiarvo ~41 €/MWh (laski 9% vuodesta 2024)
+    price_2025_override = {
+        1:  55.0,  # tammikuu: kylmä talvi, korkea kulutus
+        2:  48.0,  # helmikuu
+        3:  32.0,  # maaliskuu: hinnat alkoivat laskea
+        4:  18.0,  # huhtikuu: runsas vesivoima, erittäin halpa
+        5:  22.0,  # toukokuu: tulvahuippu
+        6:  20.0,  # kesäkuu: ~21 €/MWh (lähde: Vaasan Sähkö)
+        7:  22.0,  # heinäkuu: ~21 €/MWh
+        8:  45.0,  # elokuu: hinnat nousivat (lämpöaalto, tuuleton)
+        9:  42.0,  # syyskuu
+        10: 52.0,  # lokakuu: syystalvi alkaa
+        11: 58.0,  # marraskuu
+        12: 62.0,  # joulukuu: kylmä, korkea kulutus
+    }
 
     records = []
     for year in range(start_year, end_year + 1):
         base = annual_base.get(year, 45.0)
         for month in range(1, 13):
-            mf = month_factors[month]
-            boost = crisis_boost.get((year, month), 1.0)
-            noise = rng.normal(1.0, 0.08)
-            price = max(base * mf * boost * noise, 0.0)
+            if year == 2025 and month in price_2025_override:
+                price = price_2025_override[month] * rng.normal(1.0, 0.03)
+            else:
+                mf = month_factors[month]
+                boost = crisis_boost.get((year, month), 1.0)
+                noise = rng.normal(1.0, 0.08)
+                price = max(base * mf * boost * noise, 0.0)
             records.append({"year": year, "month": month, "price_eur_mwh": round(price, 2)})
 
     return pd.DataFrame(records)
