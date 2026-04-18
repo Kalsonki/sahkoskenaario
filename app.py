@@ -239,11 +239,11 @@ with st.sidebar:
     with st.expander("Datakeskukset", expanded=False):
         datacenter_base = st.slider(
             "Datakeskusten kulutus 2025 (lähtötaso, TWh)",
-            0.5, 5.0, 2.0, 0.5,
+            0.5, 10.0, 3.0, 0.5,
         )
         datacenter_growth = st.slider(
             "Datakeskusten vuosikasvuvauhti (%/v)",
-            0, 30, 8, 1,
+            0, 50, 32, 1,
         )
         dc_final = datacenter_base * ((1 + datacenter_growth / 100) ** 10)
         dc_capped = dc_final >= 50.0
@@ -253,7 +253,7 @@ with st.sidebar:
             f"{dc_final_disp:.1f} TWh** vuoteen 2035"
         )
         if dc_capped:
-            st.warning("Laskennallinen arvo ylittää 50 TWh — rajattu 50 TWh:iin.", icon="⚠️")
+            st.info(f"Datakeskuskulutus saavuttaa 50 TWh tavoitetason vuoteen 2035 mennessä.", icon="⚡")
 
     with st.expander("Tuulivoima ja aurinkoenergia", expanded=False):
         wind_fi_gw = st.slider(
