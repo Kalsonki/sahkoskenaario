@@ -53,7 +53,24 @@ END_YEAR   = 2038
 # Perustuu tuulen ja hinnan negatiiviseen korrelaatioon — kun tuulee, hinta on jo matala
 # Käytetään tulevaisuudessa investointituottolaskelmissa (LCOE vs capture price)
 WIND_CAPTURE_RATE = 0.70
-FI_BASE_CONSUMPTION_TWH = 85.0   # Suomen nykyinen sähkönkulutus TWh/vuosi
+FI_BASE_CONSUMPTION_TWH = 84.5   # Fingrid 2025 toteutunut kulutus (TWh/vuosi)
+
+# Kulutuskomponentit 2025 (TWh) — Fingrid + Energia.fi + Business Finland
+FI_CONSUMPTION_BREAKDOWN_2025 = {
+    "Teollisuus":    40.5,   # sellu, paperi, metalli, kemian teollisuus
+    "Kotitaloudet":  19.0,
+    "Palvelut":      16.5,
+    "Lämpöpumput":    6.0,   # ~1M lämpöpumppua
+    "Datakeskukset":  2.5,   # Helsinki datacenter hub
+    "Sähköautot":     0.3,   # ~130k EV @ 2500 kWh/v
+    "Muut":           0.7,   # liikenne, maatalous, häviöt
+}
+
+# Fingrid dataset 124: kuukausittainen kulutus 2025 (TWh)
+FI_MONTHLY_CONSUMPTION_2025 = {
+    1: 8.35, 2: 7.72, 3: 7.79, 4: 6.93, 5: 6.66, 6: 5.88,
+    7: 6.05, 8: 6.27, 9: 6.05, 10: 7.01, 11: 7.62, 12: 8.22,
+}
 
 # ── Markkinaparametrien optiot (avain: (nimi_UI, hintavaikutus)) ─────────────
 
@@ -152,7 +169,7 @@ class ScenarioParams:
     ev_twh: float = 1.0                 # sähköautot
 
     # Datakeskukset
-    datacenter_base_twh: float = 2.0
+    datacenter_base_twh: float = 2.5   # Fingrid 2025 arvio
     datacenter_growth_pct: float = 8.0  # % per vuosi
 
     # Siirtoyhteydet
