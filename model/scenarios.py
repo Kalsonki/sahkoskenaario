@@ -177,6 +177,14 @@ class ScenarioParams:
     interconnect_fi_ee: str = "nykytaso"
     interconnect_no: str = "normaali"
 
+    # Naapurialueiden hintataso suhteessa FI-forwardiin (1.0 = sama kuin FI)
+    # SE3 (Tukholma): historiallisesti 5–15% halvempi kuin FI (FI-SE EPAD)
+    # SE1 (Luulaja): pohjoisruotsin vesivoima, usein 15–30% halvempi kuin FI
+    # EE (Viro): vaihtelee, ennen venäläinen kaasu → halpa, nyt lähellä FI-tasoa
+    se3_price_relative: float = 0.92   # SE3 = 92% FI-hinnasta
+    se1_price_relative: float = 0.78   # SE1 = 78% FI-hinnasta
+    ee_price_relative:  float = 1.00   # EE  = 100% FI-hinnasta (parity)
+
 
 @dataclass
 class RegressionResult:
@@ -256,12 +264,27 @@ def compute_market_adjustments(params: ScenarioParams, year: int) -> float:
     dc_growth_pct = max(dc_twh - params.datacenter_base_twh, 0.0) / FI_BASE_CONSUMPTION_TWH
     factor *= (1.0 + 0.30 * dc_growth_pct)
 
-    # 9. Siirtoyhteydet: suurempi kapasiteetti → pienempi hinnoille painetta
+    # 9. Hintakytkentä naapurialueisiin (SE3, SE1, EE)
+    # Kytkentävaikutus = hintaero × (IC-kapasiteetti / FI-kysyntä)
+    # FI keskimääräinen kysyntä ~9 650 MW (84.5 TWh / 8760 h)
+    _FI_AVG_DEMAND_MW = 9_650.0
     _, fi_se_mw = INTERCONNECT_FI_SE_OPTIONS.get(params.interconnect_fi_se, ("", 2200))
     _, fi_ee_mw = INTERCONNECT_FI_EE_OPTIONS.get(params.interconnect_fi_ee, ("", 1000))
-    total_ic_mw = fi_se_mw + fi_ee_mw
-    ic_adj = (total_ic_mw - 3200) / 1000.0 * (-0.015)  # +1 GW → -1.5%
-    factor *= (1.0 + ic_adj)
+
+    # SE3: pääyhteys (FI–SE kaapeli välittää myös SE1-vaikutuksen osittain)
+    # SE1 vaikuttaa FI:hin SE3:n kautta — painotettu yhdistelmä
+    se_blended = 0.65 * params.se3_price_relative + 0.35 * params.se1_price_relative
+    se_coupling = (se_blended - 1.0) * (fi_se_mw / _FI_AVG_DEMAND_MW)
+
+    # EE: Estlink 1+2 kytkentä
+    ee_coupling = (params.ee_price_relative - 1.0) * (fi_ee_mw / _FI_AVG_DEMAND_MW)
+
+    # Norjan hydro skaalaa SE1-vaikutusta (enemmän vettä → SE1 halvempi → FI halvempi)
+    _, no_factor = INTERCONNECT_NO_OPTIONS.get(params.interconnect_no, ("", 1.0))
+    hydro_se1_boost = (no_factor - 1.0) * 0.05  # ±5% SE1-kytkentään
+    se_coupling += hydro_se1_boost * (fi_se_mw / _FI_AVG_DEMAND_MW)
+
+    factor *= (1.0 + se_coupling + ee_coupling)
 
     return max(factor, 0.20)
 

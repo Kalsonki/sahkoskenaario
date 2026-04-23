@@ -389,6 +389,23 @@ with st.sidebar:
         max_hintaero_preview = compute_max_hintaero(tmp_params_ic)
         st.caption(f"Max FI–Pohjoismaat hintaero: **{max_hintaero_preview:.0f} €/MWh**")
 
+        st.markdown("**Naapurialueiden hintataso suhteessa FI:hin**")
+        se3_price_relative = st.slider(
+            "SE3 (Tukholma) hinta % FI:stä",
+            60, 120, 92, 1,
+            help="SE3 on historiallisesti 5–15% halvempi kuin FI (FI-SE EPAD). 100% = pariteetti.",
+        ) / 100.0
+        se1_price_relative = st.slider(
+            "SE1 (Luulaja) hinta % FI:stä",
+            40, 110, 78, 1,
+            help="Pohjois-Ruotsin vesivoima — usein 15–30% halvempi kuin FI.",
+        ) / 100.0
+        ee_price_relative = st.slider(
+            "EE (Viro) hinta % FI:stä",
+            70, 130, 100, 1,
+            help="Viro on usein lähellä FI-tasoa. Ennen venäläinen kaasu teki siitä halvemman.",
+        ) / 100.0
+
     st.divider()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -517,6 +534,9 @@ scenario_params = ScenarioParams(
     interconnect_fi_se=interconnect_fi_se,
     interconnect_fi_ee=interconnect_fi_ee,
     interconnect_no=interconnect_no,
+    se3_price_relative=se3_price_relative,
+    se1_price_relative=se1_price_relative,
+    ee_price_relative=ee_price_relative,
 )
 
 hedge_params = HedgeParams(
