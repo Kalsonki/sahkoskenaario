@@ -199,12 +199,12 @@ def price_scenario_chart(
     fig = go.Figure()
 
     if not historical_df.empty:
-        hist = historical_df.sort_values(["year", "month"])
+        hist = historical_df[historical_df["year"] >= 2023].sort_values(["year", "month"])
         hist["label"] = hist.apply(lambda r: _date_label(int(r.year), int(r.month)), axis=1)
         fig.add_trace(go.Scatter(
             x=hist["label"],
             y=hist["price_eur_mwh"],
-            name="Historiallinen (2015–2024)",
+            name="Historiallinen (2023–2025)",
             line=dict(color="#757575", width=1.5, dash="dot"),
             hovertemplate="%{x}: %{y:.1f} €/MWh<extra>Historiallinen</extra>",
         ))
@@ -236,9 +236,28 @@ def price_scenario_chart(
             hovertemplate="%{x}: %{y:.1f} €/MWh<extra>" + result.label + "</extra>",
         ))
 
+    # ── Tuulivoiman investointikynnykset ──────────────────────────────────────
+    # Kynnys = LCOE / capture_rate (0.70). Viivat näyttävät milloin investoinnit kannattavat.
+    _wind_thresholds = [
+        (50,  "#43A047", "Maatuuli – paras paikka (LCOE ~35 €/MWh)"),
+        (64,  "#FB8C00", "Maatuuli – keskimäärin (LCOE ~45 €/MWh)"),
+        (100, "#E53935", "Merituuli (LCOE ~75 €/MWh)"),
+    ]
+    x_line = ["2023-01", f"{END_YEAR}-12"]
+    for threshold, color, label in _wind_thresholds:
+        fig.add_trace(go.Scatter(
+            x=x_line,
+            y=[threshold, threshold],
+            mode="lines",
+            name=label,
+            line=dict(color=color, width=1.2, dash="dash"),
+            hovertemplate=f"{label}: {threshold} €/MWh<extra>Investointikynnys</extra>",
+        ))
+
+    CHART_START = 2023  # Näytä historiallinen data tästä alkaen
     fig.update_layout(
-        title="Sähköhinnan skenaariopolut 2025–2035",
-        xaxis_title="Kuukausi",
+        title="Sähköhinnan skenaariopolut 2023–2038",
+        xaxis_title="Vuosi",
         yaxis_title="Hinta (€/MWh)",
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
@@ -246,9 +265,10 @@ def price_scenario_chart(
         xaxis=dict(
             tickangle=-45,
             tickmode="array",
-            tickvals=[f"{y}-01" for y in range(START_YEAR, END_YEAR + 1)],
-            ticktext=[str(y) for y in range(START_YEAR, END_YEAR + 1)],
+            tickvals=[f"{y}-01" for y in range(CHART_START, END_YEAR + 1)],
+            ticktext=[str(y) for y in range(CHART_START, END_YEAR + 1)],
             gridcolor="#E0E0E0",
+            range=[f"{CHART_START}-01", f"{END_YEAR}-12"],
         ),
         yaxis=dict(gridcolor="#E0E0E0"),
         **_LAYOUT_BASE,

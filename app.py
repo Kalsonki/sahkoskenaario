@@ -1,5 +1,5 @@
 """
-app.py – Streamlit-pääsovellus: Sähkönhintaskenaariot 2025–2035.
+app.py – Streamlit-pääsovellus: Sähkönhintaskenaariot 2025–2038.
 Käynnistys: streamlit run app.py
 """
 
@@ -18,7 +18,7 @@ import streamlit as st
 
 # ── Sivuasetukset (ennen muita st-kutsuja) ────────────────────────────────────
 st.set_page_config(
-    page_title="Sähkönhintaskenaariot 2025–2035",
+    page_title="Sähkönhintaskenaariot 2025–2038",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -30,7 +30,7 @@ def check_password() -> bool:
     """Tarkistaa salasanan ja palauttaa True jos kirjautunut sisään."""
     if st.session_state.get("authenticated"):
         return True
-    st.title("⚡ Sähkönhintaskenaariot 2025–2035")
+    st.title("⚡ Sähkönhintaskenaariot 2025–2038")
     st.markdown("### Kirjaudu sisään")
     password = st.text_input("Salasana", type="password", key="pw_input")
     if st.button("Kirjaudu"):
@@ -60,7 +60,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ Sähkönhintaskenaariot 2025–2035")
+st.title("⚡ Sähkönhintaskenaariot 2025–2038")
 st.caption("Suomen sähkömarkkinan analyysi | Monte Carlo -simulaatio | Merit Order | Riskianalyysi")
 
 # ── Tuonti malleista ──────────────────────────────────────────────────────────

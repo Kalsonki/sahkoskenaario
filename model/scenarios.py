@@ -47,7 +47,12 @@ SCENARIO_COLORS = {
 }
 
 START_YEAR = 2025
-END_YEAR   = 2035
+END_YEAR   = 2038
+
+# Tuulivoiman capture rate: tuulivoiman saama hinta suhteessa spot-keskiarvoon
+# Perustuu tuulen ja hinnan negatiiviseen korrelaatioon — kun tuulee, hinta on jo matala
+# Käytetään tulevaisuudessa investointituottolaskelmissa (LCOE vs capture price)
+WIND_CAPTURE_RATE = 0.70
 FI_BASE_CONSUMPTION_TWH = 85.0   # Suomen nykyinen sähkönkulutus TWh/vuosi
 
 # ── Markkinaparametrien optiot (avain: (nimi_UI, hintavaikutus)) ─────────────
@@ -89,8 +94,31 @@ INTERCONNECT_NO_OPTIONS: dict[str, tuple[str, float]] = {
     "laajennettu": ("Laajennettu", 1.3),
 }
 
-# Perushinnat per skenaario (€/MWh) ennen markkinavaikutuksia
-_BASE_PRICES = {"matala": 42.0, "perus": 62.0, "korkea": 92.0}
+# ── Forward-käyrä: Suomen sähkön futuurihinnat (Nasdaq Commodities, 17.4.2026) ──
+# Lähde: Nasdaq Nord Pool Finland power futures, Energia.fi, 10v PPA-hinta
+# Arvot €/MWh vuositasolla (perusskenaario = forward-käyrä sellaisenaan)
+_FORWARD_YEARS  = np.array([2025, 2026, 2027, 2028, 2029, 2031, 2035, 2038], dtype=np.float64)
+_FORWARD_PRICES = np.array([42.0, 49.0, 45.28, 42.73, 42.87, 49.0,  56.2,  61.6], dtype=np.float64)
+# 2025: arvioitu vuosikeskiarvo (H2 forward + H1 toteutunut ≈ 42 €/MWh)
+# 2026: futuurihinta (Apr 57.94, May 37.50, Jun 30.23, Q3 42.40, Q4 64.35 → ~49)
+# 2027–2029: Nasdaq futuurihinnat suoraan
+# 2031: käyttäjän antama data (49.0 €/MWh)
+# 2035: ekstrapoloitu (10v PPA baseload ~51 €/MWh, nouseva trendi → 56.2)
+# 2036–2038: ekstrapoloitu lineaarisesti (~+1.8 €/MWh/v)
+
+
+def _get_forward_base(year: int) -> float:
+    """Interpoloi forward-käyrältä perushinnan annetulle vuodelle."""
+    return float(np.interp(float(year), _FORWARD_YEARS, _FORWARD_PRICES))
+
+
+# Skenaariolisät forward-käyrälle (perus = 1.0 = forward sellaisenaan)
+# Kapeat suhteelliset välit, koska forward-taso on matalampi kuin vanha _BASE_PRICES
+_SCENARIO_MULT = {
+    "matala": 0.80,   # −20% forward-käyrästä (optimistinen)
+    "perus":  1.00,   #  0%  forward-käyrä sellaisenaan
+    "korkea": 1.45,   # +45% forward-käyrästä (riskiskenaario)
+}
 # Suhteellinen hajonta per skenaario
 _BASE_STDS   = {"matala": 0.10, "perus": 0.15, "korkea": 0.22}
 
@@ -198,14 +226,14 @@ def compute_market_adjustments(params: ScenarioParams, year: int) -> float:
     # Suhteellinen muutos referenssipisteestä × kaasusähkön markkinaosuus
     factor *= (1.0 + (blended_cur / _MO_BLENDED_REF - 1.0) * _GAS_MARKET_SHARE)
 
-    # 7. Kulutuskasvu: sähköistyminen + sähköautot (joustavuus 0.60)
+    # 7. Kulutuskasvu: sähköistyminen + sähköautot (hintavaikutuskerroin 0.60)
     # Empiirinen peruste: Aalto 2023 tutkimus, kysyntäjousto -0.16 → supply-kerroin ~1.5
     # Käytetään 0.60 (konservatiivinen pitkän aikavälin estimaatti, markkinat mukautuvat)
     total_growth_twh = params.electrification_twh + params.ev_twh
     consumption_pct = total_growth_twh * (years / 10.0) / FI_BASE_CONSUMPTION_TWH
     factor *= (1.0 + 0.60 * consumption_pct)
 
-    # 8. Datakeskukset (joustavuus 0.30)
+    # 8. Datakeskukset (hintavaikutuskerroin 0.30)
     dc_twh = params.datacenter_base_twh * ((1 + params.datacenter_growth_pct / 100) ** years)
     dc_twh = min(dc_twh, 50.0)
     dc_growth_pct = max(dc_twh - params.datacenter_base_twh, 0.0) / FI_BASE_CONSUMPTION_TWH
@@ -242,7 +270,7 @@ def compute_variable_sensitivities(params: ScenarioParams, base_year: int = 2030
     Palauttaa DataFrame: muuttuja, vaikutus_matala, vaikutus_korkea,
                           arvo_matala, arvo_korkea
     """
-    base_price_perus = 62.0
+    base_price_perus = _get_forward_base(base_year)
     base_factor = compute_market_adjustments(params, base_year)
     base_result = base_price_perus * base_factor
 
@@ -381,10 +409,10 @@ def compute_impact_breakdown(
         ...
     }
     """
-    REF_BASE = _BASE_PRICES["perus"]  # 62 €/MWh
     result: dict[int, dict] = {}
 
     for year in ref_years:
+        REF_BASE = _get_forward_base(year)  # forward-käyrän hinta kyseiselle vuodelle
         full_factor = compute_market_adjustments(params, year)
         full_price  = REF_BASE * full_factor
 
@@ -486,7 +514,7 @@ def calibrate_regression(fundamental_df: pd.DataFrame) -> RegressionResult:
         result.coef = coef
         result.intercept = float(model.intercept_)
         result.used_features = feature_cols
-        result.base_price_adjustment = float(y.mean()) - 62.0
+        result.base_price_adjustment = float(y.mean()) - _get_forward_base(2022)
 
         if "date" in df.columns:
             seasonal = df.groupby(df["date"].dt.month)["price_fi"].mean()
@@ -565,9 +593,15 @@ def run_monte_carlo(
             )
             break
 
-        base    = _BASE_PRICES[scenario]
+        sc_mult = _SCENARIO_MULT[scenario]
         std_rel = _BASE_STDS[scenario]
         adj     = reg.base_price_adjustment
+
+        # ── Forward-käyrän perushinnat per vuosi (kalibroitu Nasdaq-futuureilla) ─
+        forward_bases = np.array(
+            [_get_forward_base(int(y)) * sc_mult for y in years_arr],
+            dtype=np.float64,
+        )  # (n_years,)
 
         # ── Vuosittaiset markkinavaikutukset (11 skalaaria — nopea) ──────────
         # Ainut jäljellä oleva Python-silmukka: vain 11 kierrosta
@@ -576,7 +610,7 @@ def run_monte_carlo(
             dtype=np.float64,
         )  # (n_years,)
 
-        means = np.maximum((base + adj) * market_factors, 15.0)  # (n_years,)
+        means = np.maximum((forward_bases + adj) * market_factors, 15.0)  # (n_years,)
         stds  = means * std_rel                                    # (n_years,)
 
         # ── Vuositason otanta — täysin vektorisoitu ──────────────────────────
